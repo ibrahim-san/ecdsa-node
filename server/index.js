@@ -1,7 +1,10 @@
+import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
+
 const express = require("express");
 const app = express();
 const cors = require("cors");
 const port = 3042;
+const crypto = require("crypto");
 
 app.use(cors());
 app.use(express.json());
@@ -19,7 +22,14 @@ app.get("/balance/:address", (req, res) => {
 });
 
 app.post("/send", (req, res) => {
-  const { sender, recipient, amount } = req.body;
+  const { sender, recipient, amount, signature, publicKey } = req.body;
+
+  const msg = `${sender}${recipient}${amount}`;
+  const hash = crypto.createHash("sha256").update(msg).digest("hex");
+
+  if (!secp256k1.verify(Buffer.from(signature, "hex"), Buffer.from(hash, "hex"), publicKey)) {
+    return res.status(400).send({ message: "Invalid signature" });
+  }
 
   setInitialBalance(sender);
   setInitialBalance(recipient);

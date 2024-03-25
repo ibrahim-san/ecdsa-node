@@ -8,10 +8,13 @@ function Transfer({ address, setBalance }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
   const [privateKey, setPrivateKey] = useState("");
+  const [publicKey, setPublicKey] = useState("");
 
   async function signTransaction(sender, recipient, amount) {
     const privateKey = secp256k1.utils.randomPrivateKey();
     setPrivateKey(privateKey);
+    const publicKey = secp256k1.getPublicKey(privateKey);
+    setPublicKey(privateKey);
     const msg = `${sender}${recipient}${amount}`;
     const hash = crypto.createHash("sha256").update(msg).digest("hex");
     const signature = secp256k1.sign(Buffer.from(hash, "hex"), privateKey);
@@ -31,6 +34,7 @@ function Transfer({ address, setBalance }) {
         recipient,
         amount: parseInt(sendAmount),
         signature: signature.toString("hex"),
+        publicKey: publicKey,
       });
       setBalance(response.data.balance);
     } catch (ex) {

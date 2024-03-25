@@ -1,9 +1,22 @@
 import { useState } from "react";
 import server from "./server";
+import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
+
+const crypto = require("crypto");
 
 function Transfer({ address, setBalance }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+
+  async function signTransaction(sender, recipient, amount) {
+    const privateKey = secp256k1.utils.randomPrivateKey();
+    setPrivateKey(privateKey);
+    const msg = `${sender}${recipient}${amount}`;
+    const hash = crypto.createHash("sha256").update(msg).digest("hex");
+    const signature = secp256k1.sign(Buffer.from(hash, "hex"), privateKey);
+    return signature.signature;
+  }
 
   const setValue = (setter) => (evt) => setter(evt.target.value);
 
@@ -11,14 +24,15 @@ function Transfer({ address, setBalance }) {
     evt.preventDefault();
 
     try {
-      const {
-        data: { balance },
-      } = await server.post(`send`, {
+
+      const signature = await signTransaction(address, recipient, parseInt(sendAmount));
+      const response = await server.post(`send`, {
         sender: address,
-        amount: parseInt(sendAmount),
         recipient,
+        amount: parseInt(sendAmount),
+        signature: signature.toString("hex"),
       });
-      setBalance(balance);
+      setBalance(response.data.balance);
     } catch (ex) {
       alert(ex.response.data.message);
     }

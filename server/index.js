@@ -1,19 +1,17 @@
-import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
-
 const express = require("express");
+const fs = require('fs')
 const app = express();
 const cors = require("cors");
+
 const port = 3042;
-const crypto = require("crypto");
+
+const secp  = require('ethereum-cryptography/secp256k1')
+const { toHex } = require('ethereum-cryptography/utils')
 
 app.use(cors());
 app.use(express.json());
 
-const balances = {
-  "0x1": 100,
-  "0x2": 50,
-  "0x3": 75,
-};
+const balances = JSON.parse(fs.readFileSync("./address.json", 'utf-8'));
 
 app.get("/balance/:address", (req, res) => {
   const { address } = req.params;
@@ -22,27 +20,30 @@ app.get("/balance/:address", (req, res) => {
 });
 
 app.post("/send", (req, res) => {
-  const { sender, recipient, amount, signature, publicKey } = req.body;
+  const { data, messageHash, sign } = req.body;
 
-  const msg = `${sender}${recipient}${amount}`;
-  const hash = crypto.createHash("sha256").update(msg).digest("hex");
+  const sender = data.sender
+  const amount = data.amount
+  setInitialBalance(data.sender);
+  setInitialBalance(data.recipient);
 
-  if (!secp256k1.verify(Buffer.from(signature, "hex"), Buffer.from(hash, "hex"), publicKey)) {
-    return res.status(400).send({ message: "Invalid signature" });
+  const isValid = isValidTransaction(messageHash,sign,sender)
+  if(!isValid) {
+    res.status(400).send({message: "Not a valid Sender"})
   }
 
-  setInitialBalance(sender);
-  setInitialBalance(recipient);
-
-  if (balances[sender] < amount) {
+  // console.log(balances[], amount)
+  if (balances[sender] < data.amount) {
     res.status(400).send({ message: "Not enough funds!" });
   } else {
     balances[sender] -= amount;
-    balances[recipient] += amount;
+    balances[data.recipient] += amount;
     res.send({ balance: balances[sender] });
   }
 });
-
+app.use("/", (req, res) => {
+  res.send("Nothing Here!");
+});
 app.listen(port, () => {
   console.log(`Listening on port ${port}!`);
 });
@@ -51,4 +52,20 @@ function setInitialBalance(address) {
   if (!balances[address]) {
     balances[address] = 0;
   }
+}
+
+function isValidTransaction(messageHash, sign, sender) {
+  const signature = Uint8Array.from(Object.values(sign[0]))
+  const recoveryBit = sign[1]
+  // console.log(recoveredPublicKey)
+  // console.log(recoveryBit)
+  const recoveredPublicKey = secp.recoverPublicKey(messageHash, signature, recoveryBit)
+  // console.log("hello")
+  const isSigned = secp.verify(signature, messageHash, recoveredPublicKey)
+
+  const isValidSender = (sender.slice(2).toString() === toHex(recoveredPublicKey.slice(1).slice(-20)).toString()) ? true:false
+
+  if(isValidSender && isSigned) return true
+
+  return false
 }

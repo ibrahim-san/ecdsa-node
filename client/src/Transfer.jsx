@@ -1,42 +1,43 @@
 import { useState } from "react";
 import server from "./server";
-import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
+import * as secp from "ethereum-cryptography/secp256k1"
+import { keccak256 } from "ethereum-cryptography/keccak"
+import { toHex, utf8ToBytes } from "ethereum-cryptography/utils"
 
-const crypto = require("crypto");
 
-function Transfer({ address, setBalance }) {
+function Transfer({ address, setBalance, privateKey, setPrivateKey }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
-  const [privateKey, setPrivateKey] = useState("");
-  const [publicKey, setPublicKey] = useState("");
-
-  async function signTransaction(sender, recipient, amount) {
-    const privateKey = secp256k1.utils.randomPrivateKey();
-    setPrivateKey(privateKey);
-    const publicKey = secp256k1.getPublicKey(privateKey);
-    setPublicKey(privateKey);
-    const msg = `${sender}${recipient}${amount}`;
-    const hash = crypto.createHash("sha256").update(msg).digest("hex");
-    const signature = secp256k1.sign(Buffer.from(hash, "hex"), privateKey);
-    return signature.signature;
-  }
 
   const setValue = (setter) => (evt) => setter(evt.target.value);
-
+  
   async function transfer(evt) {
     evt.preventDefault();
 
-    try {
+// My code here
+    const data = {
+      sender: address,
+      amount: parseInt(sendAmount),
+      recipient,
+    }
 
-      const signature = await signTransaction(address, recipient, parseInt(sendAmount));
-      const response = await server.post(`send`, {
-        sender: address,
-        recipient,
-        amount: parseInt(sendAmount),
-        signature: signature.toString("hex"),
-        publicKey: publicKey,
+    // console.log(privateKey)
+    const messageHash = toHex(keccak256(utf8ToBytes(JSON.stringify(data))))
+    // console.log(messageHash)
+  
+    const sign = await secp.sign(messageHash, privateKey, { recovered: Boolean = true})
+
+    
+//--------------------------------------------
+    try {
+      const {
+        data: { balance },
+      } = await server.post(`send`, {
+        data,
+        messageHash,
+        sign,
       });
-      setBalance(response.data.balance);
+      setBalance(balance);
     } catch (ex) {
       alert(ex.response.data.message);
     }
@@ -61,6 +62,18 @@ function Transfer({ address, setBalance }) {
           placeholder="Type an address, for example: 0x2"
           value={recipient}
           onChange={setValue(setRecipient)}
+        ></input>
+      </label>
+
+      
+      <label>
+        Private Key*
+        <input
+          placeholder="Relax! we won't save it"
+          type="password"
+          value={privateKey}
+          onChange={setValue(setPrivateKey)}
+          required
         ></input>
       </label>
 
